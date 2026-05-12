@@ -19,34 +19,29 @@ def build_patient_expectation_suite() -> ExpectationSuite:
     # 1. patient_id không được null
     validator.expect_column_values_to_not_be_null("patient_id")
 
-    # 2. TODO: cccd phải có đúng 12 ký tự
     validator.expect_column_value_lengths_to_equal(
-        column=___,
-        value=___
+        column="cccd",
+        value=12
     )
 
-    # 3. TODO: ket_qua_xet_nghiem phải trong khoảng [0, 50]
     validator.expect_column_values_to_be_between(
-        column=___,
-        min_value=___,
-        max_value=___
+        column="ket_qua_xet_nghiem",
+        min_value=0,
+        max_value=50
     )
 
-    # 4. TODO: benh phải thuộc danh sách hợp lệ
     valid_conditions = ["Tiểu đường", "Huyết áp cao", "Tim mạch", "Khỏe mạnh"]
     validator.expect_column_values_to_be_in_set(
-        column=___,
-        value_set=___
+        column="benh",
+        value_set=valid_conditions
     )
 
-    # 5. TODO: email phải match regex pattern
     validator.expect_column_values_to_match_regex(
         column="email",
-        regex=r"___"    # TODO: email regex
+        regex=r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
     )
 
-    # 6. TODO: Không được có duplicate patient_id
-    validator.expect_column_values_to_be_unique(column=___)
+    validator.expect_column_values_to_be_unique(column="patient_id")
 
     validator.save_expectation_suite()
     return suite
@@ -67,14 +62,23 @@ def validate_anonymized_data(filepath: str) -> dict:
         }
     }
 
-    # Check 1: Không còn CCCD gốc dạng số thuần túy
-    # (sau anonymization, cccd phải là fake hoặc masked)
-    # TODO: implement check
+    if "cccd" in df and not df["cccd"].astype(str).str.match(r"^\d{12}$").all():
+        results["success"] = False
+        results["failed_checks"].append("cccd must contain 12-digit replacement values")
 
-    # Check 2: Không có null values trong các cột quan trọng
-    # TODO: implement check
+    required_columns = ["patient_id", "cccd", "so_dien_thoai", "email", "benh", "ket_qua_xet_nghiem"]
+    null_columns = [col for col in required_columns if col in df and df[col].isna().any()]
+    if null_columns:
+        results["success"] = False
+        results["failed_checks"].append(f"null values found in: {', '.join(null_columns)}")
 
-    # Check 3: Số rows phải bằng original
-    # TODO: implement check
+    try:
+        original_rows = len(pd.read_csv("data/raw/patients_raw.csv"))
+        results["stats"]["original_rows"] = original_rows
+        if len(df) != original_rows:
+            results["success"] = False
+            results["failed_checks"].append("row count differs from raw dataset")
+    except FileNotFoundError:
+        results["failed_checks"].append("raw dataset not found; skipped row-count comparison")
 
     return results

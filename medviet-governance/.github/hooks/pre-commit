@@ -1,30 +1,34 @@
 #!/bin/bash
-# Pre-commit hook: chạy security checks trước khi commit
+set -e
 
-echo "🔍 Running security checks..."
+echo "Running security checks..."
 
-# 1. git-secrets scan
-git secrets --pre_commit_hook -- "$@"
-if [ $? -ne 0 ]; then
-    echo "❌ git-secrets found potential secrets! Commit blocked."
+PYTHON=""
+for candidate in ".venv/bin/python" ".venv/Scripts/python.exe" "python"; do
+    if "$candidate" -c "import sys" >/dev/null 2>&1; then
+        PYTHON="$candidate"
+        break
+    fi
+done
+
+if [ -z "$PYTHON" ]; then
+    echo "Python was not found. Activate .venv or install Python before committing."
     exit 1
 fi
 
-# 2. Bandit SAST scan
-echo "🐍 Running Bandit SAST..."
-bandit -r src/ -ll -q
-if [ $? -ne 0 ]; then
-    echo "❌ Bandit found security issues! Review above."
-    exit 1
+if command -v git-secrets >/dev/null 2>&1; then
+    git secrets --pre_commit_hook -- "$@"
+elif git secrets --version >/dev/null 2>&1; then
+    git secrets --pre_commit_hook -- "$@"
+else
+    echo "git-secrets is not installed; running local credential-pattern fallback."
+    "$PYTHON" scripts/security_scan.py .
 fi
 
-# 3. pip-audit dependency check
-echo "📦 Checking dependencies for CVEs..."
-pip-audit --desc on
-if [ $? -ne 0 ]; then
-    echo "⚠️  Vulnerable dependencies found! Update before committing."
-    exit 1
-fi
+echo "Running Bandit SAST..."
+"$PYTHON" -m bandit -r src/ -ll -q
 
-echo "✅ All security checks passed!"
-exit 0
+echo "Checking dependencies for CVEs..."
+"$PYTHON" -m pip_audit --desc on
+
+echo "All security checks passed."
